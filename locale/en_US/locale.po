@@ -12,19 +12,19 @@ msgstr ""
 "Language: \n"
 
 msgid "plugins.importexport.quickSubmit.displayName"
-msgstr "QuickSubmit Plugin"
+msgstr "OMP QuickSubmit Plugin"
 
 msgid "plugins.importexport.quickSubmit.description"
 msgstr "One-step submission plugin"
 
 msgid "plugins.importexport.quickSubmit.descriptionLong"
-msgstr "This plugin allows you to quickly add complete submissions to the production stage or directly into an issue."
+msgstr "This plugin allows you to quickly add complete submissions to the production stage or directly into the catalogue."
 
 msgid "plugins.importexport.quickSubmit.success"
-msgstr "Article Added"
+msgstr "Book Added"
 
 msgid "plugins.importexport.quickSubmit.successDescription"
-msgstr "Article creation was successful."
+msgstr "Book creation was successful."
 
 msgid "plugins.importexport.quickSubmit.successReturn"
 msgstr "Return to QuickSubmit plugin."
@@ -44,5 +44,12 @@ msgstr "Unpublished"
 msgid "plugins.importexport.quickSubmit.goToSubmission"
 msgstr "Go to Submission"
 
-msgid "plugins.importexport.quickSubmit.selectIssue"
-msgstr "An issue must be selected"
+msgid "plugins.pubIds.doi.editor.doiObjectTypePublication"
+msgstr "Publication"
+
+msgid "plugins.importexport.quickSubmit.assignChapterDoi"
+msgstr "Assign DOIs to chapters"
+
+msgid "plugins.importexport.quickSubmit.assignPublicationDoi"
+msgstr "Assign DOI to publication"
+

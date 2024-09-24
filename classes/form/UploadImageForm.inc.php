@@ -3,8 +3,8 @@
 /**
  * @file classes/form/UploadImageForm.inc.php
  *
- * Copyright (c) 2014-2021 Simon Fraser University
- * Copyright (c) 2003-2021 John Willinsky
+ * Copyright (c) 2014-2020 Simon Fraser University
+ * Copyright (c) 2003-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
  * @class UploadImageForm
@@ -13,15 +13,7 @@
  * @brief Form for upload an image.
  */
 
-use PKP\form\Form;
-use PKP\form\validation\FormValidator;
-use PKP\facades\Locale;
-use PKP\linkAction\LinkAction;
-use PKP\linkAction\Request\RemoteActionConfirmationModal;
-use PKP\file\TemporaryFileManager;
-use PKP\file\FileManager;
-use PKP\core\JSONMessage;
-use APP\facades\Repo;
+import('lib.pkp.classes.form.Form');
 
 class UploadImageForm extends Form {
 	/** string Setting key that will be associated with the uploaded file. */
@@ -61,8 +53,8 @@ class UploadImageForm extends Form {
 
 		$this->submissionId = $request->getUserVar('submissionId');
 
-		$this->submission = Repo::submission()->get($request->getUserVar('submissionId'));
-		if ($this->submission->getContextId() != $this->context->getId()) throw new Exception('Submission context ID does not match context!');
+		$submissionDao = DAORegistry::getDAO('SubmissionDAO'); /* @var $submissionDao SubmissionDAO */
+		$this->submission = $submissionDao->getById($request->getUserVar('submissionId'), $this->context->getId(), false);
 		$this->publication = $this->submission->getCurrentPublication();
 	}
 
@@ -83,10 +75,12 @@ class UploadImageForm extends Form {
 		$templateMgr = TemplateManager::getManager($this->request);
 		$templateMgr->assign('submissionId', $this->submissionId);
 
-		$locale = Locale::getLocale();
-		$coverImage = $this->publication->getData('coverImage', $locale);
+		$locale = AppLocale::getLocale();
+		$coverImage = $this->submission->getCurrentPublication()->getLocalizedData('coverImage') ?? '';
 
 		if ($coverImage) {
+			import('lib.pkp.classes.linkAction.LinkAction');
+			import('lib.pkp.classes.linkAction.request.RemoteActionConfirmationModal');
 			$router = $this->request->getRouter();
 			$deleteCoverImageLinkAction = new LinkAction(
 				'deleteCoverImage',
@@ -94,7 +88,7 @@ class UploadImageForm extends Form {
 					$this->request->getSession(),
 					__('common.confirmDelete'), null,
 					$router->url($this->request, null, null, 'importexport', array('plugin', 'QuickSubmitPlugin', 'deleteCoverImage'), array(
-						'coverImage' => $coverImage,
+						'coverImage' => $coverImage['uploadName'],
 						'submissionId' => $this->submission->getId(),
 						'stageId' => WORKFLOW_STAGE_ID_PRODUCTION,
 					)),
@@ -107,7 +101,7 @@ class UploadImageForm extends Form {
 		}
 
 		$this->setData('coverImage', $coverImage);
-		$this->setData('imageAltText', $coverImage['altText'] ?? '');
+		$this->setData('imageAltText', $this->submission->getCoverImageAltText($locale));
 		$this->setData('coverImageName', $coverImage['uploadName'] ?? '');
 	}
 
@@ -126,12 +120,13 @@ class UploadImageForm extends Form {
 	function deleteCoverImage($request) {
 		assert($request->getUserVar('coverImage') != '' && $request->getUserVar('submissionId') != '');
 
+		$publicationDao = DAORegistry::getDAO('PublicationDAO'); /* @var $publicationDao PublicationDAO */
 		$file = $request->getUserVar('coverImage');
 
 		// Remove cover image and alt text from article settings
-		$locale = Locale::getLocale();
+		$locale = AppLocale::getLocale();
 		$this->publication->setData('coverImage', []);
-		Repo::publication()->edit($this->publication, []);
+		$publicationDao->updateObject($this->publication);
 
 		// Remove the file
 		$publicFileManager = new PublicFileManager();
@@ -145,39 +140,39 @@ class UploadImageForm extends Form {
 	}
 
 	/**
-	 * Save file image to Submission
-	 * @param $request Request.
+	 * @copydoc Form::execute()
 	 */
 	function execute(...$functionArgs) {
-		parent::execute(...$functionArgs);
+		$request = Application::get()->getRequest();
+		$publicationDao = DAORegistry::getDAO('PublicationDAO'); /* @var $publicationDao PublicationDAO */
 
-
-		$temporaryFile = $this->fetchTemporaryFile($this->request);
-		$locale = Locale::getLocale();
+		$temporaryFile = $this->fetchTemporaryFile($request);
+		$locale = AppLocale::getLocale();
 		$coverImage = $this->publication->getData('coverImage');
 
-		if ($temporaryFile instanceof \PKP\file\TemporaryFile) {
+		import('classes.file.PublicFileManager');
+		$publicFileManager = new PublicFileManager();
+
+		if (is_a($temporaryFile, 'TemporaryFile')) {
 			$type = $temporaryFile->getFileType();
-			$fileManager = new FileManager();
-			$extension = $fileManager->getImageExtension($type);
+			$extension = $publicFileManager->getImageExtension($type);
 			if (!$extension) {
 				return false;
 			}
-			$locale = Locale::getLocale();
+			$locale = AppLocale::getLocale();
 
-			$newFileName = 'article_' . $this->submissionId . '_cover_' . $locale . $fileManager->getImageExtension($temporaryFile->getFileType());
+			$newFileName = 'book_' . $this->submissionId . '_cover_' . $locale . $publicFileManager->getImageExtension($temporaryFile->getFileType());
 
-			$publicFileManager = new PublicFileManager();
 			if ($publicFileManager->copyContextFile($this->context->getId(), $temporaryFile->getFilePath(), $newFileName)) {
 
 				$this->publication->setData('coverImage', [
 					'altText' => $this->getData('imageAltText'),
 					'uploadName' => $newFileName,
 				], $locale);
-				Repo::publication()->edit($this->publication, []);
+				$publicationDao->updateObject($this->publication);
 
 				// Clean up the temporary file.
-				$this->removeTemporaryFile($this->request);
+				$this->removeTemporaryFile($request);
 
 				return DAO::getDataChangedEvent();
 			}
@@ -185,7 +180,7 @@ class UploadImageForm extends Form {
 			$coverImage = $this->publication->getData('coverImage');
 			$coverImage[$locale]['altText'] = $this->getData('imageAltText');
 			$this->publication->setData('coverImage', $coverImage);
-			Repo::publication()->edit($this->publication, []);
+			$publicationDao->updateObject($this->publication);
 			return DAO::getDataChangedEvent();
 		}
 		return new JSONMessage(false, __('common.uploadFailed'));
@@ -253,6 +248,7 @@ class UploadImageForm extends Form {
 	function removeTemporaryFile($request) {
 		$user = $request->getUser();
 
+		import('lib.pkp.classes.file.TemporaryFileManager');
 		$temporaryFileManager = new TemporaryFileManager();
 		$temporaryFileManager->deleteById($this->getData('temporaryFileId'), $user->getId());
 	}
@@ -264,6 +260,7 @@ class UploadImageForm extends Form {
 	function uploadFile($request) {
 		$user = $request->getUser();
 
+		import('lib.pkp.classes.file.TemporaryFileManager');
 		$temporaryFileManager = new TemporaryFileManager();
 		$temporaryFile = $temporaryFileManager->handleUpload('uploadedFile', $user->getId());
 
@@ -272,4 +269,3 @@ class UploadImageForm extends Form {
 		return false;
 	}
 }
-

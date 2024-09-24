@@ -3,8 +3,8 @@
 /**
  * @file QuickSubmitPlugin.inc.php
  *
- * Copyright (c) 2013-2021 Simon Fraser University
- * Copyright (c) 2003-2021 John Willinsky
+ * Copyright (c) 2013-2020 Simon Fraser University
+ * Copyright (c) 2003-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
  * @class QuickSubmitPlugin
@@ -13,14 +13,21 @@
  * @brief Quick Submit one-page submission plugin
  */
 
-use PKP\core\JSONMessage;
 
-class QuickSubmitPlugin extends \PKP\plugins\ImportExportPlugin {
+import('lib.pkp.classes.plugins.ImportExportPlugin');
+
+class QuickSubmitPlugin extends ImportExportPlugin {
 
 	/**
 	 * @copydoc Plugin::register()
 	 */
 	public function register($category, $path, $mainContextId = NULL) {
+		AppLocale::requireComponents(LOCALE_COMPONENT_APP_COMMON,
+			LOCALE_COMPONENT_APP_SUBMISSION,
+			LOCALE_COMPONENT_APP_AUTHOR,
+			LOCALE_COMPONENT_APP_EDITOR,
+			LOCALE_COMPONENT_PKP_SUBMISSION);
+
 		$success = parent::register($category, $path, $mainContextId);
 		$this->addLocaleData();
 
@@ -52,7 +59,7 @@ class QuickSubmitPlugin extends \PKP\plugins\ImportExportPlugin {
 	 * @copydoc ImportExportPlugin::display()
 	 */
 	public function display($args, $request) {
-		$templateMgr = TemplateManager::getManager($request);
+		$templateMgr = TemplateManager::getManager();
 		$templateMgr->registerPlugin('function', 'plugin_url', array($this, 'smartyPluginUrl'));
 
 		switch (array_shift($args)) {
@@ -76,9 +83,6 @@ class QuickSubmitPlugin extends \PKP\plugins\ImportExportPlugin {
 				return $this->_deleteUploadedImage($request);
 			default:
 				$this->import('QuickSubmitForm');
-				$templateMgr->assign([
-					'pageTitle' => $this->getDisplayName(),
-				]);
 				$form = new QuickSubmitForm($this, $request);
 				$form->initData();
 				$form->display($request);
@@ -104,9 +108,6 @@ class QuickSubmitPlugin extends \PKP\plugins\ImportExportPlugin {
 		$notificationMgr->createTrivialNotification($currentUser->getId(), NOTIFICATION_TYPE_SUCCESS, array('contents' => $notificationContent));
 
 		$templateMgr = TemplateManager::getManager($request);
-		$templateMgr->assign([
-			'pageTitle' => __('plugins.importexport.quickSubmit.cancel'),
-		]);
 		$templateMgr->display($this->getTemplateResource('submitCancel.tpl'));
 	}
 
@@ -180,7 +181,6 @@ class QuickSubmitPlugin extends \PKP\plugins\ImportExportPlugin {
 		if($form->validate()){
 			$form->execute();
 			$templateMgr->assign(array(
-				'pageTitle' => __('plugins.importexport.quickSubmit.success'),
 				'submissionId' => $form->getSubmission()->getId(),
 				'stageId' => WORKFLOW_STAGE_ID_PRODUCTION,
 			));
@@ -222,18 +222,57 @@ class QuickSubmitPlugin extends \PKP\plugins\ImportExportPlugin {
 		return $smarty->smartyUrl($params, $smarty);
 	}
 
-	/**
-	 * @copydoc PKPImportExportPlugin::usage
-	 */
-	public function usage($scriptName) {
-		fatalError('Not implemented');
-	}
+    /**
+     * @copydoc ImportExportPlugin::executeCLI
+     */
+    public function executeCLI($scriptName, &$args)
+    {
+        throw new BadMethodCallException();
+    }
 
-	/**
-	 * @copydoc PKPImportExportPlugin::executeCLI()
-	 */
-	public function executeCLI($scriptName, &$args) {
-		fatalError('Not implemented');
-	}
+    /**
+     * @copydoc ImportExportPlugin::usage
+     */
+    public function usage($scriptName)
+    {
+        throw new BadMethodCallException();
+    }
+
+    /**
+     * Define the appropriate import filter given the imported XML file path
+     *
+     * @param string $xmlFile
+     *
+     * @return array Containing the filter and the xmlString of the imported file
+     */
+    public function getImportFilter($xmlFile)
+    {
+        throw new BadMethodCallException();
+    }
+
+    /**
+     * Define the appropriate export filter given the export operation
+     *
+     * @param string $exportType
+     *
+     * @return string
+     */
+    public function getExportFilter($exportType)
+    {
+        throw new BadMethodCallException();
+    }
+
+    /**
+     * Get the application specific deployment object
+     *
+     * @param Context $context
+     * @param User $user
+     *
+     * @return PKPImportExportDeployment
+     */
+    public function getAppSpecificDeployment($context, $user)
+    {
+        throw new BadMethodCallException();
+    }
 }
 

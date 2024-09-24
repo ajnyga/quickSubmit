@@ -1,8 +1,8 @@
 /**
  * @file cypress/tests/functional/QuickSubmit.spec.js
  *
- * Copyright (c) 2014-2021 Simon Fraser University
- * Copyright (c) 2000-2021 John Willinsky
+ * Copyright (c) 2014-2020 Simon Fraser University
+ * Copyright (c) 2000-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
  */
@@ -11,11 +11,11 @@ describe('Quick Submit plugin tests', function() {
 	it('Creates a published quick submission', function() {
 		cy.login('admin', 'admin', 'publicknowledge');
 
-		cy.get('.app__nav a:contains("Tools")').click();
+		cy.get('ul[id="navigationPrimary"] a:contains("Tools")').click();
+		cy.get('ul[id="navigationPrimary"] a:contains("Import/Export")').click();
 		cy.get('a:contains("QuickSubmit Plugin")').click();
-		cy.get('select[id="sectionId"]').select('Articles');
+		cy.get('select[id="seriesId"]').select('Articles');
 		cy.waitJQuery(); // Wait for form resubmission hack on section change.
-		cy.wait(2000); // FIXME: Detached element delay
 
 		cy.get('input[id^="title-en_US-"]').type('QuickSubmit Published Test Submission', {delay: 0});
 		cy.get('textarea[id^="abstract-en_US-"]').then(node => {
@@ -35,10 +35,10 @@ describe('Quick Submit plugin tests', function() {
 		cy.get('div:contains("Author added.")');
 
 		// Schedule for publication
-		cy.get('input#articlePublished').click();
+		cy.get('input#submissionPublished').click();
 		cy.get('select#issueId').select('Vol. 1 No. 2 (2014)');
 		cy.get('input[id^="datePublished-"]:visible').type('2020-01-01', {delay: 0});
-		cy.get('input[id^="licenseUrl"]').click(); // Take focus out of datepicker
+		cy.get('legend:contains("Published")').click(); // Take focus out of datepicker
 
 		// Add a galley
 		cy.get('a[id^="component-grid-articlegalleys-articlegalleygrid-addGalley-button-"]').click();
@@ -48,8 +48,8 @@ describe('Quick Submit plugin tests', function() {
 		cy.get('select[id=genreId]').select('Article Text');
 		cy.wait(250);
 		cy.fixture('dummy.pdf', 'base64').then(fileContent => {
-			cy.get('div[id^="fileUploadWizard"] input[type=file]').attachFile(
-				{fileContent, 'filePath': 'article.pdf', 'mimeType': 'application/pdf', 'encoding': 'base64'}
+			cy.get('div[id^="fileUploadWizard"] input[type=file]').upload(
+				{fileContent, 'fileName': 'article.pdf', 'mimeType': 'application/pdf', 'encoding': 'base64'}
 			);
 		});
 		cy.get('button').contains('Continue').click();
@@ -61,8 +61,7 @@ describe('Quick Submit plugin tests', function() {
 		cy.waitJQuery();
 
 		// Test the submission in the published front end
-
-		cy.get('.app__contextTitle:contains("Journal of Public Knowledge")').click();
+		cy.get('a:contains("View Site")').click();
 		cy.get('a:contains("Archives")').click();
 		cy.get('a:contains("Vol. 1 No. 2 (2014")').click();
 		cy.get('a:contains("QuickSubmit Published Test Submission")').click();
@@ -74,11 +73,11 @@ describe('Quick Submit plugin tests', function() {
 	it('Creates an unpublished quick submission', function() {
 		cy.login('admin', 'admin', 'publicknowledge');
 
-		cy.get('.app__nav a:contains("Tools")').click();
+		cy.get('ul[id="navigationPrimary"] a:contains("Tools")').click();
+		cy.get('ul[id="navigationPrimary"] a:contains("Import/Export")').click();
 		cy.get('a:contains("QuickSubmit Plugin")').click();
-		cy.get('select[id="sectionId"]').select('Articles');
+		cy.get('select[id="seriesId"]').select('Articles');
 		cy.waitJQuery(); // Wait for form resubmission hack on section change.
-		cy.wait(2000); // FIXME: Detached element delay
 
 		cy.get('input[id^="title-en_US-"]').type('QuickSubmit Unpublished Test Submission', {delay: 0});
 		cy.get('textarea[id^="abstract-en_US-"]').then(node => {

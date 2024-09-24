@@ -1,23 +1,21 @@
 # @file
 # .travis.yml - PKP Plugins Integration
 
-dist: bionic
-os: linux
 language: php
 
 addons:
-  postgresql: "9.5"
   apt:
     update: true
 
 sudo: required
 
 php:
-  - 8.0
-  - 8.1.0
+  - 7.2
+  - 7.3
+  - 7.4
 env:
-  - APPLICATION=ojs BRANCH=main TEST=mysql
-  - APPLICATION=ojs BRANCH=main TEST=pgsql
+  - APPLICATION=ojs BRANCH=master TEST=mysql
+  - APPLICATION=ojs BRANCH=master TEST=pgsql
 
 install:
   # Prepare OJS/OMP environment
@@ -31,13 +29,12 @@ install:
   - npm i g -npm && npm install && npm run build
   # Make sure we're using the current checkout of this repo rather than the built-in OJS/OMP version
   - ln -s ${TRAVIS_BUILD_DIR} ~/${APPLICATION}/plugins/importexport/quickSubmit
-
-script:
   # Install OJS/OMP & prep data environment
   - $(npm bin)/cypress run --spec "cypress/tests/data/10-Installation.spec.js,cypress/tests/data/20-CreateContext.spec.js,cypress/tests/data/40-CreateUsers.spec.js,cypress/tests/data/50-CreateIssues.spec.js,cypress/tests/data/50-CreateSections.spec.js"
+
+script:
   - $(npm bin)/cypress run --config integrationFolder=plugins/importexport/quickSubmit/cypress/tests
 
 after_failure:
-  - cat error.log
   - sudo apt-get install sharutils
   - tar cz cypress/screenshots | uuencode /dev/stdout

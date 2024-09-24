@@ -1,8 +1,8 @@
 {**
  * templates/submitCancel.tpl
  *
- * Copyright (c) 2013-2021 Simon Fraser University
- * Copyright (c) 2003-2021 John Willinsky
+ * Copyright (c) 2013-2020 Simon Fraser University
+ * Copyright (c) 2003-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
  * Display a message indicating that the submission was cancelled.
@@ -14,7 +14,7 @@
 		{translate key="plugins.importexport.quickSubmit.cancel"}
 	</h1>
 
-	<div class="app__contentPanel">
+	<div class="app__contentPanel pkp_cancelQuickSubmit">
 		<p>
 			{translate key="plugins.importexport.quickSubmit.cancelDescription"}
 		</p>

@@ -3,8 +3,8 @@
 /**
  * @file QuickSubmitForm.inc.php
  *
- * Copyright (c) 2013-2021 Simon Fraser University
- * Copyright (c) 2003-2021 John Willinsky
+ * Copyright (c) 2013-2020 Simon Fraser University
+ * Copyright (c) 2003-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
  * @class QuickSubmitForm
@@ -13,15 +13,10 @@
  * @brief Form for QuickSubmit one-page submission plugin
  */
 
-use APP\core\Application;
-use APP\submission\SubmissionMetadataFormImplementation;
-use APP\publication\Publication;
-use APP\facades\Repo;
-use PKP\form\Form;
-use PKP\facades\Locale;
-use PKP\linkAction\LinkAction;
-use PKP\linkAction\request\AjaxModal;
-use PKP\core\PKPString;
+
+import('lib.pkp.classes.form.Form');
+import('classes.submission.SubmissionMetadataFormImplementation');
+import('classes.publication.Publication');
 
 class QuickSubmitForm extends Form {
 	/** @var Request */
@@ -30,7 +25,7 @@ class QuickSubmitForm extends Form {
 	/** @var Submission */
 	protected $_submission;
 
-	/** @var Journal */
+	/** @var Press */
 	protected $context;
 
 	/** @var SubmissionMetadataFormImplementation */
@@ -50,33 +45,43 @@ class QuickSubmitForm extends Form {
 		$this->_metadataFormImplem = new SubmissionMetadataFormImplementation($this);
 
 		$locale = $request->getUserVar('locale');
-		if ($locale && ($locale != Locale::getLocale())) {
+		if ($locale && ($locale != AppLocale::getLocale())) {
 			$this->setDefaultFormLocale($locale);
 		}
 
 		if ($submissionId = $request->getUserVar('submissionId')) {
-			$this->_submission = Repo::submission()->get($submissionId);
+			$submissionDao = DAORegistry::getDAO('SubmissionDAO'); /* @var SubmissionDAO $submissionDao */
+			$publicationDao = DAORegistry::getDAO('PublicationDAO'); /* @var $publicationDao PublicationDAO */
+
+			$this->_submission = $submissionDao->getById($submissionId);
 			if ($this->_submission->getContextId() != $this->_context->getId()) throw new Exeption('Submission not in context!');
+
 			$this->_submission->setLocale($this->getDefaultFormLocale());
 			$publication = $this->_submission->getCurrentPublication();
 			$publication->setData('locale', $this->getDefaultFormLocale());
-			Repo::submission()->edit($this->_submission, []);
-			Repo::publication()->edit($publication, []);
+			$publication->setData('language', PKPString::substr($this->getDefaultFormLocale(), 0, 2));
+
+			$seriesId = $request->getUserVar('seriesId');
+			if (!empty($seriesId)) {
+				$this->_submission->setSeriesId($seriesId);
+			}
+
+			$submissionDao->updateObject($this->_submission);
+			$publicationDao->updateObject($publication);
 
 			$this->_metadataFormImplem->addChecks($this->_submission);
 		}
 
-		$this->addCheck(new \PKP\form\validation\FormValidatorPost($this));
-		$this->addCheck(new \PKP\form\validation\FormValidatorCSRF($this));
-		$this->addCheck(new \PKP\form\validation\FormValidatorCustom($this, 'sectionId', 'required', 'author.submit.form.sectionRequired', array(DAORegistry::getDAO('SectionDAO'), 'sectionExists'), array($this->_context->getId())));
+		$this->addCheck(new FormValidatorPost($this));
+		$this->addCheck(new FormValidatorCSRF($this));
 
 		// Validation checks for this form
 		$supportedSubmissionLocales = $this->_context->getSupportedSubmissionLocales();
 		if (!is_array($supportedSubmissionLocales) || count($supportedSubmissionLocales) < 1)
 			$supportedSubmissionLocales = array($this->_context->getPrimaryLocale());
-		$this->addCheck(new \PKP\form\validation\FormValidatorInSet($this, 'locale', 'required', 'submission.submit.form.localeRequired', $supportedSubmissionLocales));
+		$this->addCheck(new FormValidatorInSet($this, 'locale', 'required', 'submission.submit.form.localeRequired', $supportedSubmissionLocales));
 
-		$this->addCheck(new \PKP\form\validation\FormValidatorUrl($this, 'licenseUrl', 'optional', 'form.url.invalid'));
+		$this->addCheck(new FormValidatorURL($this, 'licenseUrl', 'optional', 'form.url.invalid'));
 	}
 
 	/**
@@ -115,15 +120,20 @@ class QuickSubmitForm extends Form {
 		}
 
 		// Cover image delete link action
-		$locale = Locale::getLocale();
-
-		$router = $this->_request->getRouter();
+		$locale = AppLocale::getLocale();
 		$publication = $this->_submission->getCurrentPublication();
+
+		import('lib.pkp.classes.linkAction.LinkAction');
+		import('lib.pkp.classes.linkAction.request.AjaxModal');
+		$router = $this->_request->getRouter();
+		$coverImage = $publication->getLocalizedData('coverImage') ?? '';
+		$coverImageName = $coverImage['uploadName'] ?? '';
+
 		$templateMgr->assign('openCoverImageLinkAction', new LinkAction(
 			'uploadFile',
 			new AjaxModal(
 				$router->url($this->_request, null, null, 'importexport', array('plugin', 'QuickSubmitPlugin', 'uploadCoverImage'), array(
-					'coverImage' => $publication->getData('coverImage', $locale),
+					'coverImage' => $coverImageName,
 					'submissionId' => $this->_submission->getId(),
 					'publicationId' => $publication->getId(),
 					// This action can be performed during any stage,
@@ -138,50 +148,50 @@ class QuickSubmitForm extends Form {
 			'add'
 		));
 
-		// Get section for this context
-		$sectionDao = DAORegistry::getDAO('SectionDAO');
-		$sectionOptions = array('0' => '') + $sectionDao->getTitlesByContextId($this->_context->getId());
-		$templateMgr->assign('sectionOptions', $sectionOptions);
+		$templateMgr->assign('coverImageName', $coverImageName);
 
-		// Get published Issues
-		$issues = Repo::issue()->getCollector()
-			->filterByContextIds([$this->_context->getId()])
-			->orderBy(\APP\issue\Collector::ORDERBY_SHELF)
-			->getMany()
-			->toArray();
+		// Get series for this context
+		$seriesDao = DAORegistry::getDAO('SeriesDAO');
+		$seriesOptions = array('0' => '') + $seriesDao->getTitlesByContextId($this->_context->getId());
+		$templateMgr->assign('seriesOptions', $seriesOptions);
 
-		$templateMgr->assign('hasIssues', count($issues) > 0);
-
-		// Get Issues
 		$templateMgr->assign(array(
-			'issueOptions' => $this->getIssueOptions($this->_context),
 			'submission' => $this->_submission,
+			'publication' => $publication,
 			'locale' => $this->getDefaultFormLocale(),
 			'publicationId' => $publication->getId(),
+			'licenseUrl' => $this->_context->getData('licenseUrl'),
+			'copyrightHolderType' => $this->_context->getData('copyrightHolderType')
 		));
 
-		$sectionDao = DAORegistry::getDAO('SectionDAO');
-		$sectionId = $this->getData('sectionId') ?: $this->_submission->getSectionId();
-		$section = $sectionDao->getById($sectionId, $this->_context->getId());
-		$templateMgr->assign(array(
-			'wordCount' => $section->getAbstractWordCount(),
-			'abstractsRequired' => !$section->getAbstractsNotRequired(),
-		));
-
-		// Process entered tagit fields values for redisplay.
-		// @see PKPSubmissionHandler::saveStep
-		$tagitKeywords = $this->getData('keywords');
-		if (is_array($tagitKeywords)) {
-			$tagitFieldNames = $this->_metadataFormImplem->getTagitFieldNames();
-			$locales = array_keys($this->supportedLocales);
-			$formTagitData = array();
-			foreach ($tagitFieldNames as $tagitFieldName) {
-				foreach ($locales as $locale) {
-					$formTagitData[$locale] = array_key_exists($locale . "-$tagitFieldName", $tagitKeywords) ? $tagitKeywords[$locale . "-$tagitFieldName"] : array();
-				}
-				$this->setData($tagitFieldName, $formTagitData);
+		// DOI support
+		$pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->_context->getId());
+		$doiPubIdPlugin = $pubIdPlugins['doipubidplugin'];
+		if ($doiPubIdPlugin && $doiPubIdPlugin->getSetting($this->_context->getId(), 'doiPrefix')){
+			if ($doiPubIdPlugin->getSetting($this->_context->getId(), 'enablePublicationDoi')) {
+				$templateMgr->assign('assignPublicationDoi', true);
+			}
+			if ($doiPubIdPlugin->getSetting($this->_context->getId(), 'enableChapterDoi')) {
+				$templateMgr->assign('assignChapterDoi', true);
 			}
 		}
+		// DOI support
+
+		// Categories list
+		$categoryDao = DAORegistry::getDAO('CategoryDAO'); /* @var $categoryDao CategoryDAO */
+		$categoriesOptions = [];
+		$categories = $categoryDao->getByContextId($this->_context->getId())->toAssociativeArray();
+		foreach ($categories as $category) {
+			$title = $category->getLocalizedTitle();
+			if ($category->getParentId()) {
+				$title = $categories[$category->getParentId()]->getLocalizedTitle() . ' > ' . $title;
+			}
+			$categoriesOptions[(int) $category->getId()] = $title;
+		}
+
+		$templateMgr->assign(array(
+			'categoriesOptions' => $categoriesOptions,
+		));
 
 		parent::display($request, $template);
 	}
@@ -191,20 +201,7 @@ class QuickSubmitForm extends Form {
 	 */
 	function validate($callHooks = true) {
 		if (!parent::validate($callHooks)) return false;
-
-		// Validate Issue if Published is selected
-		// if articleStatus == 1 => should have issueId
-		if ($this->getData('articleStatus') == 1) {
-			if ($this->getData('issueId') <= 0) {
-				$this->addError('issueId', __('plugins.importexport.quickSubmit.selectIssue'));
-				$this->errorFields['issueId'] = 1;
-
-				return false;
-			}
-		}
-
 		return true;
-
 	}
 
 	/**
@@ -216,45 +213,53 @@ class QuickSubmitForm extends Form {
 		if (!$this->_submission) {
 			$this->_data['locale'] = $this->getDefaultFormLocale();
 
-			// Get Sections
-			$sectionDao = DAORegistry::getDAO('SectionDAO');
-			$sectionOptions = $sectionDao->getTitlesByContextId($this->_context->getId());
+			// Get Series
+			$seriesDao = DAORegistry::getDAO('SeriesDAO');
+			$seriesOptions = $seriesDao->getTitlesByContextId($this->_context->getId());
 
-			// Create and insert a new submission and publication
-			$this->_submission = Repo::submission()->dao->newDataObject();
+			// Create and insert a new submission
+			/** @var SubmissionDAO $submissionDao */
+			$submissionDao = DAORegistry::getDAO('SubmissionDAO');
+			$this->_submission = $submissionDao->newDataObject();
 			$this->_submission->setContextId($this->_context->getId());
 			$this->_submission->setStatus(STATUS_QUEUED);
 			$this->_submission->setSubmissionProgress(1);
 			$this->_submission->stampStatusModified();
 			$this->_submission->setStageId(WORKFLOW_STAGE_ID_SUBMISSION);
-			$this->_submission->setData('sectionId', $sectionId = current(array_keys($sectionOptions)));
+			$this->_submission->setData('seriesId', $seriesId = current(array_keys($seriesOptions)));
 			$this->_submission->setLocale($this->getDefaultFormLocale());
 
+			// Insert the submission
+			$this->_submission = Services::get('submission')->add($this->_submission, $this->_request);
+			$this->setData('submissionId', $this->_submission->getId());
+
 			$publication = new Publication();
+			$publication->setData('submissionId', $this->_submission->getId());
 			$publication->setData('locale', $this->getDefaultFormLocale());
-			$publication->setData('sectionId', $sectionId);
+			$publication->setData('language', PKPString::substr($this->getDefaultFormLocale(), 0, 2));
+			$publication->setData('seriesId', $seriesId);
 			$publication->setData('status', STATUS_QUEUED);
 			$publication->setData('version', 1);
-
-			Repo::submission()->add($this->_submission, $publication);
-			$this->_submission = Repo::submission()->get($this->_submission->getId());
-			$this->setData('submissionId', $this->_submission->getId());
+			$publication = Services::get('publication')->add($publication, $this->_request);
+			$this->_submission = Services::get('submission')->edit($this->_submission, ['currentPublicationId' => $publication->getId()], $this->_request);
 
 			$this->_metadataFormImplem->initData($this->_submission);
 
 			// Add the user manager group (first that is found) to the stage_assignment for that submission
 			$user = $this->_request->getUser();
 
-			$managerUserGroups = Repo::userGroup()->getCollector()
-				->filterByUserIds([$user->getId()])
-				->filterByContextIds([$this->_context->getId()])
-				->filterByRoleIds([Role::ROLE_ID_MANAGER])
-				->getMany();
+			$userGroupAssignmentDao = DAORegistry::getDAO('UserGroupAssignmentDAO');
+			$userGroupDao = DAORegistry::getDAO('UserGroupDAO');
 
-			// $userGroupId is being used for $stageAssignmentDao->build
-			// This build function needs the userGroupId
-			// So here the first function should fail if no manager user group is found. 
-			$userGroupId = $managerUserGroups->firstOrFail()->getId();
+			$userGroupId = null;
+			$managerUserGroupAssignments = $userGroupAssignmentDao->getByUserId($user->getId(), $this->_context->getId(), ROLE_ID_MANAGER);
+			if($managerUserGroupAssignments) {
+				while($managerUserGroupAssignment = $managerUserGroupAssignments->next()) {
+					$managerUserGroup = $userGroupDao->getById($managerUserGroupAssignment->getUserGroupId());
+					$userGroupId = $managerUserGroup->getId();
+					break;
+				}
+			}
 
 			// Pre-fill the copyright information fields from setup (#7236)
 			$this->_data['licenseUrl'] = $this->_context->getData('licenseUrl');
@@ -285,16 +290,18 @@ class QuickSubmitForm extends Form {
 
 		$this->readUserVars(
 			array(
-				'issueId',
-				'pages',
 				'datePublished',
 				'licenseUrl',
 				'copyrightHolder',
 				'copyrightYear',
-				'sectionId',
+				'seriesId',
+				'categories',
+				'workType',
 				'submissionId',
-				'articleStatus',
-				'locale'
+				'submissionStatus',
+				'locale',
+				'assignPublicationDoi',
+				'assignChapterDoi',
 			)
 		);
 	}
@@ -303,9 +310,11 @@ class QuickSubmitForm extends Form {
 	 * cancel submit
 	 */
 	function cancel() {
-		$submission = Repo::submission()->get((int) $this->getData('submissionId'));
+		/** @var SubmissionDAO $submissionDao */
+		$submissionDao = DAORegistry::getDAO('SubmissionDAO');
+		$submission = $submissionDao->getById($this->getData('submissionId'));
 		if ($this->_submission->getContextId() != $this->_context->getId()) throw new Exeption('Submission not in context!');
-		if ($submission) Repo::submission()->delete($submission->getId());
+		if ($submission) $submissionDao->deleteById($submission->getId());
 	}
 
 	/**
@@ -315,133 +324,134 @@ class QuickSubmitForm extends Form {
 		// Execute submission metadata related operations.
 		$this->_metadataFormImplem->execute($this->_submission, $this->_request);
 
-		$publication = $this->_submission->getCurrentPublication();
-
-		// Copy GalleyFiles to Submission Files
-		// Get Galley Files by SubmissionId
-		$galleyDao = Application::getRepresentationDAO();
-		$galleys = $galleyDao->getByPublicationId($publication->getId());
-
-		if (!is_null($galleys)) {
-			foreach($galleys as $galley) {
-				$file = $galley->getFile();
-				if ($file) {
-					$newSubmissionFile = clone $file;
-					$newSubmissionFile->setData('fileStage', SUBMISSION_FILE_SUBMISSION);
-					$newSubmissionFile->setData('viewable', true);
-					$newSubmissionFile->setData('sourceSubmissionFileId', $file->getId());
-					$newSubmissionFile = Repo::submissionFile()->add($newSubmissionFile);
-				}
-			}
-		}
-
 		$this->_submission->setLocale($this->getData('locale'));
 		$this->_submission->setStageId(WORKFLOW_STAGE_ID_PRODUCTION);
 		$this->_submission->setDateSubmitted(Core::getCurrentDate());
 		$this->_submission->setSubmissionProgress(0);
+		$this->_submission->setWorkType($this->getData('workType'));
 
 		parent::execute($this->_submission, ...$functionParams);
 
-		Repo::submission()->edit($this->_submission, []);
-		$this->_submission = Repo::submission()->get($this->_submission->getId());
+		$submissionDao = DAORegistry::getDAO('SubmissionDAO'); /* @var $submissionDao SubmissionDAO */
+		$submissionDao->updateObject($this->_submission);
+		$this->_submission = $submissionDao->getById($this->_submission->getId());
 
-		if ($publication->getData('sectionId') !== (int) $this->getData('sectionId')) {
-			$publication = Repo::publication()->edit($publication, ['sectionId' => (int) $this->getData('sectionId')], $this->_request);
+		$publication = $this->_submission->getCurrentPublication();
+
+		if ($this->getData('datePublished')){
+			$publication->setData('copyrightYear', date("Y", strtotime($this->getData('datePublished'))));
 		}
 
-		if ($this->getData('articleStatus') == 1) {
-			$publication->setData('copyrightYear', $this->getData('copyrightYear'));
-			$publication->setData('copyrightHolder', $this->getData('copyrightHolder'), null);
-			$publication->setData('licenseUrl', $this->getData('licenseUrl'));
-			$publication->setData('pages', $this->getData('pages'));
+		if ($this->getData('copyrightHolder') == 'author') {
+			$userGroupDao = DAORegistry::getDAO('UserGroupDAO'); /* @var $userGroupDao UserGroupDAO */
+			$userGroups = $userGroupDao->getByContextId($this->_context->getId())->toArray();
+			$publication->setData('copyrightHolder', $publication->getAuthorString($userGroups), $this->getData('locale'));
+		} elseif ($this->getData('copyrightHolder') == 'press') {
+			$publication->setData('copyrightHolder', $this->_context->getLocalizedData('name'), null);
+		}
+
+		$publication->setData('licenseUrl', $this->getData('licenseUrl'));
+
+		if ($publication->getData('seriesId') !== (int) $this->getData('seriesId')) {
+			$publication->setData('seriesId', $this->getData('seriesId'));
+		}
+
+		// Set DOIs
+		if ($this->getData('assignPublicationDoi') == 1 || $this->getData('assignChapterDoi') == 1){
+			$pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->_context->getId());
+			$doiPubIdPlugin = $pubIdPlugins['doipubidplugin'];
+			$pubIdPrefix = $doiPubIdPlugin->getSetting($this->_context->getId(), 'doiPrefix');
+			$suffixGenerationStrategy = $doiPubIdPlugin->getSetting($this->_context->getId(), $doiPubIdPlugin->getSuffixFieldName(), $publication);
+
+			if ($this->getData('assignPublicationDoi') == 1) {
+				$pubIdSuffix = $this->getDoiSuffix($suffixGenerationStrategy, $doiPubIdPlugin, $publication, $this->_context, $this->_submission, null);
+				$pubId = $doiPubIdPlugin->constructPubId($pubIdPrefix, $pubIdSuffix, $this->_context->getId());
+				$publication->setData('pub-id::doi', $pubId);
+			}
+
+			if ($this->getData('assignChapterDoi') == 1) {
+				$chapterDao = DAORegistry::getDAO('ChapterDAO'); /* @var $chapterDao ChapterDAO */
+				$chapters = $publication->getData('chapters');
+				foreach ($chapters as $chapter) {
+					$pubIdSuffix = $this->getDoiSuffix($suffixGenerationStrategy, $doiPubIdPlugin, $chapter, $this->_context, $this->_submission, $chapter);
+					$pubId = $doiPubIdPlugin->constructPubId($pubIdPrefix, $pubIdSuffix, $this->_context->getId());
+					$chapter->setData('pub-id::doi', $pubId);
+					$chapterDao->updateObject($chapter);
+				}
+			}
+		}
+
+		// Save the submission categories
+		$categoryDao = DAORegistry::getDAO('CategoryDAO'); /* @var $categoryDao CategoryDAO */
+		$categoryDao->deletePublicationAssignments($publication->getId());
+		if ($categories = $this->getData('categories')) {
+			foreach ((array) $categories as $categoryId) {
+				$categoryDao->insertPublicationAssignment($categoryId, $publication->getId());
+			}
+		}
+
+		// If publish now, set date and publish publication
+		if ($this->getData('submissionStatus') == 1) {
 			$publication->setData('datePublished', $this->getData('datePublished'));
-			$publication->setData('accessStatus', ARTICLE_ACCESS_ISSUE_DEFAULT);
-			$publication->setData('issueId', (int) $this->getData('issueId'));
-
-			// If other articles in this issue have a custom sequence, put this at the end
-			$otherSubmissionsInSection = Repo::submission()->getCollector()
-				->filterByContextIds([$this->_request->getContext()->getId()])
-				->filterByIssueIds([$publication->getData('issueId')])
-				->filterBySectionIds([$publication->getData('sectionId')])
-				->getMany()->toArray();
-			if (count($otherSubmissionsInSection)) {
-				$maxSequence = 0;
-				foreach ($otherSubmissionsInSection as $submission) {
-					if ($publication->getData('seq')) {
-						$maxSequence = max($maxSequence, $publication->getData('seq'));
-					}
-				}
-				$publication->setData('seq', $maxSequence + 1);
-			}
-
-			Repo::publication()->publish($publication);
-
-			// If this submission's issue uses custom section ordering and this is the first
-			// article published in a section, make sure we enter a custom ordering
-			// for that section to place it at the end.
-			if (DAORegistry::getDAO('SectionDAO')->customSectionOrderingExists($publication->getData('issueId'))) {
-				$sectionOrder = DAORegistry::getDAO('SectionDAO')->getCustomSectionOrder($publication->getData('issueId'), $publication->getData('sectionId'));
-				if  ($sectionOrder === null) {
-					DAORegistry::getDAO('SectionDAO')->insertCustomSectionOrder($publication->getData('issueId'), $publication->getData('sectionId'), REALLY_BIG_NUMBER);
-					DAORegistry::getDAO('SectionDAO')->resequenceCustomSectionOrders($publication->getData('issueId'));
-				}
-			}
+			$publication = Services::get('publication')->publish($publication);
 		}
 
-		// Index article.
-		$articleSearchIndex = Application::getSubmissionSearchIndex();
-		$articleSearchIndex->submissionMetadataChanged($this->_submission);
-		$articleSearchIndex->submissionFilesChanged($this->_submission);
-		$articleSearchIndex->submissionChangesFinished();
+		// Update publication
+		$publicationDao = DAORegistry::getDAO('PublicationDAO'); /* @var $publicationDao PublicationDAO */
+		$publicationDao->updateObject($publication);
+
+		// Index monograph.
+		$submissionSearchIndex = Application::getSubmissionSearchIndex();
+		$submissionSearchIndex->submissionMetadataChanged($this->_submission);
+		$submissionSearchIndex->submissionFilesChanged($this->_submission);
+		$submissionSearchIndex->submissionChangesFinished();
 
 	}
 
-	/**
-	 * builds the issue options pulldown for published and unpublished issues
-	 * @param $journal Journal
-	 * @return array Associative list of options for pulldown
-	 */
-	function getIssueOptions($journal) {
-		$issuesPublicationDates = array();
-		$issueOptions = array();
-		$journalId = $journal->getId();
+	function getDoiSuffix($suffixGenerationStrategy, $doiPubIdPlugin, $pubObject, $context, $submission, $chapter){
+		switch ($suffixGenerationStrategy) {
+			case 'customId':
+				$pubIdSuffix = $pubObject->getData('doiSuffix');
+				break;
 
-		$issueOptions[-1] =  '------    ' . __('editor.issues.futureIssues') . '    ------';
-		$issues = Repo::issue()->getCollector()
-			->filterByContextIds([$journalId])
-			->filterByPublished(false)
-			->orderBy(\APP\issue\Collector::ORDERBY_SHELF)
-			->getMany();
+			case 'pattern':
+				$suffixPatternsFieldNames = $doiPubIdPlugin->getSuffixPatternsFieldNames();
+				$pubIdSuffix = $doiPubIdPlugin->getSetting($context->getId(), $suffixPatternsFieldNames[$doiPubIdPlugin->getPubObjectType($pubObject)]);
 
-		foreach ($issues as $issue) {
-			$issueOptions[$issue->getId()] = $issue->getIssueIdentification();
-			$issuesPublicationDates[$issue->getId()] = date(PKPString::convertStrftimeFormat(Config::getVar('general', 'date_format_short')), strtotime(Core::getCurrentDate()));
+				// %p - press initials
+				$pubIdSuffix = PKPString::regexp_replace('/%p/', PKPString::strtolower($context->getAcronym($context->getPrimaryLocale())), $pubIdSuffix);
+
+				// %x - custom identifier
+				if ($pubObject->getStoredPubId('publisher-id')) {
+					$pubIdSuffix = PKPString::regexp_replace('/%x/', $pubObject->getStoredPubId('publisher-id'), $pubIdSuffix);
+				}
+
+				if ($submission) {
+					// %m - monograph id
+					$pubIdSuffix = PKPString::regexp_replace('/%m/', $submission->getId(), $pubIdSuffix);
+				}
+
+				if ($chapter) {
+					// %c - chapter id
+					$pubIdSuffix = PKPString::regexp_replace('/%c/', $chapter->getId(), $pubIdSuffix);
+				}
+
+				break;
+
+			default:
+				$pubIdSuffix = PKPString::strtolower($context->getAcronym($context->getPrimaryLocale()));
+
+				if ($submission) {
+					$pubIdSuffix .= '.' . $submission->getId();
+				}
+
+				if ($chapter) {
+					$pubIdSuffix .= '.c' . $chapter->getId();
+				}
 		}
-		$issueOptions[-2] = '------    ' . __('editor.issues.currentIssue') . '    ------';
-		$issues = array_values(Repo::issue()
-			->getCollector()
-			->filterByContextIds([$journalId])
-			->filterByPublished(true)
-			->orderBy(\APP\issue\Collector::ORDERBY_SHELF)
-			->getMany()
-			->toArray()
-		);
 
-		if (isset($issues[0]) && $issues[0]->getId() == $journal->getData('currentIssueId')) {
-			$issueOptions[$issues[0]->getId()] = $issues[0]->getIssueIdentification();
-			$issuesPublicationDates[$issues[0]->getId()] = date(PKPString::convertStrftimeFormat(Config::getVar('general', 'date_format_short')), strtotime($issues[0]->getDatePublished()));
-			array_shift($issues);
-		}
-		$issueOptions[-3] = '------    ' . __('editor.issues.backIssues') . '    ------';
-		foreach ($issues as $issue) {
-			$issueOptions[$issue->getId()] = $issue->getIssueIdentification();
-			$issuesPublicationDates[$issue->getId()] = date(PKPString::convertStrftimeFormat(Config::getVar('general', 'date_format_short')), strtotime($issues[0]->getDatePublished()));
-		}
-
-		$templateMgr = TemplateManager::getManager($this->_request);
-		$templateMgr->assign('issuesPublicationDates', json_encode($issuesPublicationDates));
-
-		return $issueOptions;
+		return $pubIdSuffix;
 	}
+
 }
 

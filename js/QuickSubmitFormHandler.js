@@ -4,8 +4,8 @@
 /**
  * @file js/QuickSubmitFormHandler.js
  *
- * Copyright (c) 2014-2021 Simon Fraser University
- * Copyright (c) 2000-2021 John Willinsky
+ * Copyright (c) 2014-2020 Simon Fraser University
+ * Copyright (c) 2000-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
  * @class QuickSubmitFormHandler.js
@@ -36,7 +36,7 @@
 		this.parent($form, options);
 		this.callbackWrapper(this.updateSchedulePublicationDiv_());
 
-		$('#locale, #sectionId').change(function() {
+		$('#locale').change(function() {
 			// Trick the form not to validate missing data before submitting
 			$('input,textarea,select').filter('[required]').each(function() {
 				$(this).removeAttr('required');
@@ -64,7 +64,7 @@
 	$.pkp.plugins.importexport.quickSubmit.js.QuickSubmitFormHandler.prototype.
 			updateSchedulePublicationDiv_ = function() {
 
-		$('input[type=radio][name=articleStatus]').change(function() {
+		$('input[type=radio][name=submissionStatus]').change(function() {
 			if ($(this).is(':checked') && this.value == '0') {
 				$('#schedulePublicationDiv').hide();
 			} else if ($(this).is(':checked') && this.value == '1') {
@@ -74,23 +74,8 @@
 			}
 		});
 
-		$('input[type=radio][name=articleStatus]').trigger('change');
+		$('input[type=radio][name=submissionStatus]').trigger('change');
 
-		$('#issueId').change(function() {
-			var val, array;
-			val = /** @type {string} */ $('#issuesPublicationDates').val();
-			array = JSON.parse(val);
-			if (!array[$('#issueId').val()]) {
-				$('#schedulingInformationDatePublished').hide();
-			} else {
-				$('input[name="datePublished"]').
-						datepicker('setDate', array[$('#issueId').val()]);
-				$('#ui-datepicker-div').hide();
-				$('#schedulingInformationDatePublished').show();
-			}
-		});
-
-		$('#issueId').trigger('change');
 	};
 
 	/** @param {jQuery} $ jQuery closure. */

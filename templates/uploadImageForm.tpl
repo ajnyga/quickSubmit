@@ -1,8 +1,8 @@
 {**
  * templates/uploadImageForm.tpl
  *
- * Copyright (c) 2014-2021 Simon Fraser University
- * Copyright (c) 2003-2021 John Willinsky
+ * Copyright (c) 2014-2020 Simon Fraser University
+ * Copyright (c) 2003-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
  * Image file upload form.
@@ -39,7 +39,7 @@
 	<input type="hidden" name="submissionId" value="{$submissionId|escape}" />
 
 	{* Cover Image *}
-	{fbvFormArea id="coverImage" title="editor.issues.coverPage"}
+	{fbvFormArea id="coverImage" title="monograph.coverImage"}
 		{fbvFormSection}
 			{include file="controllers/fileUploadContainer.tpl" id="coverImageUploader"}
 			<input type="hidden" name="temporaryFileId" id="temporaryFileId" value="" />

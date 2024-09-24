@@ -1,11 +1,11 @@
 {**
  * templates/submitSuccess.tpl
  *
- * Copyright (c) 2013-2021 Simon Fraser University
- * Copyright (c) 2003-2021 John Willinsky
+ * Copyright (c) 2013-2020 Simon Fraser University
+ * Copyright (c) 2003-2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
  *
- * Display a message indicating that the article was successfuly submitted.
+ * Display a message indicating that the monograph was successfuly submitted.
  *}
 {extends file="layouts/backend.tpl"}
 
@@ -16,7 +16,7 @@
 
 	{capture assign="submissionUrl"}{url router=$smarty.const.ROUTE_PAGE page="workflow" op="access" stageId=$stageId submissionId=$submissionId contextId="submission" escape=false}{/capture}
 
-	<div class="app__contentPanel">
+	<div class="app__contentPanel pkp_successQuickSubmit">
 		<p>
 			{translate key="plugins.importexport.quickSubmit.successDescription"}
 		</p>
@@ -31,4 +31,5 @@
 			</a>
 		</p>
 	</div>
+
 {/block}
