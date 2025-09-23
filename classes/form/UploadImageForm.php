@@ -174,6 +174,7 @@ class UploadImageForm extends Form
         $temporaryFile = $this->fetchTemporaryFile($this->request);
         $locale = Locale::getLocale();
         $coverImage = $this->publication->getData('coverImage');
+        $context = $this->request->getContext();
 
         if ($temporaryFile instanceof \PKP\file\TemporaryFile) {
             $type = $temporaryFile->getFileType();
@@ -196,6 +197,16 @@ class UploadImageForm extends Form
 
                 // Clean up the temporary file.
                 $this->removeTemporaryFile($this->request);
+
+                // Create the thumbnail
+                $coverImage = $this->publication->getData('coverImage', $locale);
+                $coverImageFilePath = $publicFileManager->getContextFilesPath($context->getId()) . '/' . $coverImage['uploadName'];
+                Repo::publication()->makeThumbnail(
+                    $coverImageFilePath,
+                    Repo::publication()->getThumbnailFileName($coverImage['uploadName']),
+                    $context->getData('coverThumbnailsMaxWidth'),
+                    $context->getData('coverThumbnailsMaxHeight')
+                );
 
                 return DAO::getDataChangedEvent();
             }
