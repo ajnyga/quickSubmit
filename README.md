@@ -1,7 +1,7 @@
 # OMP QuickSubmit Plugin
 
 - OMP QuickSubmit Plugin
-- Version: 1.0.6
+- Version: 3.4.0
 
 About
 -----
