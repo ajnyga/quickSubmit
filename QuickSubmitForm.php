@@ -19,11 +19,13 @@ namespace APP\plugins\importexport\quickSubmit;
 use APP\core\Application;
 use APP\facades\Repo;
 use APP\plugins\importexport\quickSubmit\classes\form\SubmissionMetadataForm;
+use APP\press\Press;
 use APP\publication\Publication;
 use APP\submission\Submission;
 use APP\template\TemplateManager;
 use PKP\context\Context;
 use PKP\core\Core;
+use PKP\core\PKPRequest;
 use PKP\core\PKPString;
 use PKP\db\DAORegistry;
 use PKP\facades\Locale;
@@ -35,25 +37,15 @@ use PKP\submission\PKPSubmission;
 
 class QuickSubmitForm extends Form
 {
-    /** @var Request */
-    protected $_request;
-
-    /** @var Submission */
-    protected $_submission;
-
-    /** @var Press */
-    protected $context;
-
-    /** @var SubmissionMetadataForm */
-    protected $_metadataForm;
+    protected PKPRequest $_request;
+    protected ?Submission $_submission = null;
+    protected Press $_context;
+    protected SubmissionMetadataForm $_metadataForm;
 
     /**
      * Constructor
-     *
-     * @param $plugin object
-     * @param $request object
      */
-    public function __construct($plugin, $request)
+    public function __construct(QuickSubmitPlugin $plugin, PKPRequest $request)
     {
         parent::__construct($plugin->getTemplateResource('index.tpl'));
 
@@ -70,7 +62,7 @@ class QuickSubmitForm extends Form
         if ($submissionId = $request->getUserVar('submissionId')) {
             $this->_submission = Repo::submission()->get($submissionId);
             if ($this->_submission->getContextId() != $this->_context->getId()) {
-                throw new Exeption('Submission not in context!');
+                throw new \Exception('Submission not in context!');
             }
 
             $this->_submission->setLocale($this->getDefaultFormLocale());
@@ -80,7 +72,7 @@ class QuickSubmitForm extends Form
 
             $seriesId = $request->getUserVar('seriesId');
             if (!empty($seriesId)) {
-                $this->_submission->setSeriesId($seriesId);
+                $publication->setData('seriesId', (int) $seriesId);
             }
 
             Repo::submission()->edit($this->_submission, []);
@@ -117,7 +109,7 @@ class QuickSubmitForm extends Form
      *
      * @return array
      */
-    public function getLocaleFieldNames()
+    public function getLocaleFieldNames(): array
     {
         return $this->_metadataForm->getLocaleFieldNames();
     }
@@ -344,7 +336,7 @@ class QuickSubmitForm extends Form
         $submissionDao = DAORegistry::getDAO('SubmissionDAO');
         $submission = $submissionDao->getById($this->getData('submissionId'));
         if ($this->_submission->getContextId() != $this->_context->getId()) {
-            throw new Exeption('Submission not in context!');
+            throw new \Exception('Submission not in context!');
         }
         if ($submission) {
             $submissionDao->deleteById($submission->getId());
