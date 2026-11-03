@@ -26,7 +26,6 @@ use APP\template\TemplateManager;
 use PKP\context\Context;
 use PKP\core\Core;
 use PKP\core\PKPRequest;
-use PKP\core\PKPString;
 use PKP\db\DAORegistry;
 use PKP\facades\Locale;
 use PKP\form\Form;
@@ -34,6 +33,7 @@ use PKP\linkAction\LinkAction;
 use PKP\linkAction\request\AjaxModal;
 use PKP\security\Role;
 use PKP\submission\PKPSubmission;
+use PKP\userGroup\UserGroup;
 
 class QuickSubmitForm extends Form
 {
@@ -61,14 +61,19 @@ class QuickSubmitForm extends Form
 
         if ($submissionId = $request->getUserVar('submissionId')) {
             $this->_submission = Repo::submission()->get($submissionId);
-            if ($this->_submission->getContextId() != $this->_context->getId()) {
+            if ($this->_submission->getData('contextId') != $this->_context->getId()) {
                 throw new \Exception('Submission not in context!');
             }
 
-            $this->_submission->setLocale($this->getDefaultFormLocale());
+            // Move author names to the new locale before the publication locale is changed below
+            $oldLocale = $this->_submission->getCurrentPublication()->getData('locale');
+            if ($locale && $locale !== $oldLocale) {
+                Repo::author()->changePublicationLocale($this->_submission->getCurrentPublication()->getId(), $oldLocale, $locale);
+            }
+
+            $this->_submission->setData('locale', $this->getDefaultFormLocale());
             $publication = $this->_submission->getCurrentPublication();
             $publication->setData('locale', $this->getDefaultFormLocale());
-            $publication->setData('language', PKPString::substr($this->getDefaultFormLocale(), 0, 2));
 
             $seriesId = $request->getUserVar('seriesId');
             if (!empty($seriesId)) {
@@ -141,8 +146,6 @@ class QuickSubmitForm extends Form
         $locale = Locale::getLocale();
         $publication = $this->_submission->getCurrentPublication();
 
-        import('lib.pkp.classes.linkAction.LinkAction');
-        import('lib.pkp.classes.linkAction.request.AjaxModal');
         $router = $this->_request->getRouter();
         $coverImage = $publication->getLocalizedData('coverImage') ?? '';
         $coverImageName = $coverImage['uploadName'] ?? '';
@@ -221,6 +224,20 @@ class QuickSubmitForm extends Form
             'categoriesOptions' => $categoriesOptions,
         ]);
 
+        // Process entered tagit fields values for redisplay.
+        // @see PKPSubmissionHandler::saveStep
+        $tagitKeywords = $this->getData('keywords');
+        if (is_array($tagitKeywords)) {
+            $locales = array_keys($this->supportedLocales);
+            foreach ($this->_metadataForm->getTagitFieldNames() as $tagitFieldName) {
+                $formTagitData = [];
+                foreach ($locales as $locale) {
+                    $formTagitData[$locale] = $tagitKeywords[$locale . "-{$tagitFieldName}"] ?? [];
+                }
+                $this->setData($tagitFieldName, $formTagitData);
+            }
+        }
+
         parent::display($request, $template);
     }
 
@@ -247,17 +264,16 @@ class QuickSubmitForm extends Form
 
             // Create and insert a new submission
             $this->_submission = Repo::submission()->dao->newDataObject();
-            $this->_submission->setContextId($this->_context->getId());
-            $this->_submission->setStatus(PKPSubmission::STATUS_QUEUED);
-            $this->_submission->setSubmissionProgress('start');
-            $this->_submission->stampStatusModified();
-            $this->_submission->setStageId(WORKFLOW_STAGE_ID_SUBMISSION);
-            $this->_submission->setLocale($this->getDefaultFormLocale());
+            $this->_submission->setData('contextId', $this->_context->getId());
+            $this->_submission->setData('status', PKPSubmission::STATUS_QUEUED);
+            $this->_submission->setData('submissionProgress', 'start');
+            $this->_submission->stampLastActivity();
+            $this->_submission->setData('stageId', WORKFLOW_STAGE_ID_SUBMISSION);
+            $this->_submission->setData('locale', $this->getDefaultFormLocale());
 
             $publication = new Publication();
             $publication->setData('submissionId', $this->_submission->getId());
             $publication->setData('locale', $this->getDefaultFormLocale());
-            $publication->setData('language', PKPString::substr($this->getDefaultFormLocale(), 0, 2));
             $publication->setData('status', PKPSubmission::STATUS_QUEUED);
             $publication->setData('version', 1);
 
@@ -270,16 +286,16 @@ class QuickSubmitForm extends Form
             // Add the user manager group (first that is found) to the stage_assignment for that submission
             $user = $this->_request->getUser();
 
-            $managerUserGroups = Repo::userGroup()->getCollector()
-                ->filterByUserIds([$user->getId()])
-                ->filterByContextIds([$this->_context->getId()])
-                ->filterByRoleIds([Role::ROLE_ID_MANAGER])
-                ->getMany();
+            $managerUserGroups = UserGroup::query()
+                ->withUserIds([$user->getId()])
+                ->withContextIds([$this->_context->getId()])
+                ->withRoleIds([Role::ROLE_ID_MANAGER])
+                ->get();
 
-            // $userGroupId is being used for $stageAssignmentDao->build
+            // $userGroupId is being used for Repo::stageAssignment()->build(...)
             // This build function needs the userGroupId
             // So here the first function should fail if no manager user group is found.
-            $userGroupId = $managerUserGroups->firstOrFail()->getId();
+            $userGroupId = $managerUserGroups->firstOrFail()->id;
 
             // Pre-fill the copyright information fields from setup (#7236)
             $this->_data['licenseUrl'] = $this->_context->getData('licenseUrl');
@@ -297,8 +313,7 @@ class QuickSubmitForm extends Form
             $this->_data['copyrightYear'] = date('Y');
 
             // Assign the user author to the stage
-            $stageAssignmentDao = DAORegistry::getDAO('StageAssignmentDAO');
-            $stageAssignmentDao->build($this->_submission->getId(), $userGroupId, $user->getId());
+            Repo::stageAssignment()->build($this->_submission->getId(), $userGroupId, $user->getId());
         }
     }
 
@@ -332,14 +347,12 @@ class QuickSubmitForm extends Form
      */
     public function cancel()
     {
-        /** @var SubmissionDAO $submissionDao */
-        $submissionDao = DAORegistry::getDAO('SubmissionDAO');
-        $submission = $submissionDao->getById($this->getData('submissionId'));
-        if ($this->_submission->getContextId() != $this->_context->getId()) {
+        $submission = Repo::submission()->get((int) $this->getData('submissionId'));
+        if ($this->_submission->getData('contextId') != $this->_context->getId()) {
             throw new \Exception('Submission not in context!');
         }
         if ($submission) {
-            $submissionDao->deleteById($submission->getId());
+            Repo::submission()->delete($submission);
         }
     }
 
@@ -351,11 +364,11 @@ class QuickSubmitForm extends Form
         // Execute submission metadata related operations.
         $this->_metadataForm->execute($this->_submission, $this->_request);
 
-        $this->_submission->setLocale($this->getData('locale'));
-        $this->_submission->setStageId(WORKFLOW_STAGE_ID_PRODUCTION);
-        $this->_submission->setDateSubmitted(Core::getCurrentDate());
-        $this->_submission->setSubmissionProgress('');
-        $this->_submission->setWorkType($this->getData('workType'));
+        $this->_submission->setData('locale', $this->getData('locale'));
+        $this->_submission->setData('stageId', WORKFLOW_STAGE_ID_PRODUCTION);
+        $this->_submission->setData('dateSubmitted', Core::getCurrentDate());
+        $this->_submission->setData('submissionProgress', '');
+        $this->_submission->setData('workType', $this->getData('workType'));
 
         parent::execute($this->_submission, ...$functionParams);
 
@@ -368,9 +381,7 @@ class QuickSubmitForm extends Form
         }
 
         if ($this->getData('copyrightHolder') == 'author') {
-            $userGroups = Repo::userGroup()->getCollector()
-                ->filterByContextIds([$this->_context->getId()])
-                ->getMany();
+            $userGroups = UserGroup::withContextIds([$this->_context->getId()])->get();
             $publication->setData('copyrightHolder', $publication->getAuthorString($userGroups), $this->getData('locale'));
         } elseif ($this->getData('copyrightHolder') == 'press') {
             $publication->setData('copyrightHolder', $this->_context->getLocalizedData('name'), $this->getData('locale'));

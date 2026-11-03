@@ -74,7 +74,7 @@ class UploadImageForm extends Form
         $this->submissionId = $request->getUserVar('submissionId');
 
         $this->submission = Repo::submission()->get($request->getUserVar('submissionId'));
-        if ($this->submission->getContextId() != $this->context->getId()) {
+        if ($this->submission->getData('contextId') != $this->context->getId()) {
             throw new Exception('Submission context ID does not match context!');
         }
         $this->publication = $this->submission->getCurrentPublication();
@@ -103,8 +103,6 @@ class UploadImageForm extends Form
         $coverImage = $this->submission->getCurrentPublication()->getLocalizedData('coverImage') ?? '';
 
         if ($coverImage) {
-            import('lib.pkp.classes.linkAction.LinkAction');
-            import('lib.pkp.classes.linkAction.request.RemoteActionConfirmationModal');
             $router = $this->request->getRouter();
             $deleteCoverImageLinkAction = new LinkAction(
                 'deleteCoverImage',
@@ -157,7 +155,7 @@ class UploadImageForm extends Form
 
         // Remove the file
         $publicFileManager = new PublicFileManager();
-        if ($publicFileManager->removeContextFile($this->submission->getContextId(), $file)) {
+        if ($publicFileManager->removeContextFile($this->submission->getData('contextId'), $file)) {
             $json = new JSONMessage(true);
             $json->setEvent('fileDeleted');
             return $json;
