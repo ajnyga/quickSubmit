@@ -153,8 +153,9 @@ class UploadImageForm extends Form
         $locale = Locale::getLocale();
         Repo::publication()->edit($this->publication, ['coverImage' => []]);
 
-        // Remove the file
+        // Remove the thumbnail and the file
         $publicFileManager = new PublicFileManager();
+        $publicFileManager->removeContextFile($this->submission->getData('contextId'), Repo::publication()->getThumbnailFileName($file));
         if ($publicFileManager->removeContextFile($this->submission->getData('contextId'), $file)) {
             $json = new JSONMessage(true);
             $json->setEvent('fileDeleted');
